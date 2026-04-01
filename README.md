@@ -24,4 +24,6 @@ Collect observations
 pip install mujoco
 pip install robosuite
 
+Python version 3.10.20
+
 
