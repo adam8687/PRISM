@@ -21,4 +21,7 @@ Use robo suite data collection script to collect demonstrations; take the demons
 
 Collect observations
 
+pip install mujoco
+pip install robosuite
+
 
