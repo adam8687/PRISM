@@ -10,6 +10,7 @@ R              reset environment
 Esc            quit
 """
 
+import copy
 import numpy as np
 import robosuite as suite
 from robosuite.devices import Keyboard
@@ -37,8 +38,6 @@ CONTROLLER_CONFIG = {
     }
 }
 
-RENDER_EVERY = 2  # render every N steps to reduce GPU load
-
 env = suite.make(
     env_name="Lift",
     robots="Panda",
@@ -55,26 +54,42 @@ env.viewer.add_keypress_callback(device.on_press)
 
 print(__doc__)
 
+
+def state_snapshot(state: dict) -> dict:
+    """Deep-copy a controller state dict so comparisons work on held keys."""
+    snap = {}
+    for k, v in state.items():
+        snap[k] = v.copy() if isinstance(v, np.ndarray) else v
+    return snap
+
+
+def state_changed(prev: dict | None, curr: dict) -> bool:
+    if prev is None:
+        return True
+    for k in curr:
+        va, vb = prev.get(k), curr[k]
+        if isinstance(vb, np.ndarray):
+            if not np.array_equal(va, vb):
+                return True
+        elif va != vb:
+            return True
+    return False
+
+
 while True:
     obs = env.reset()
     device.start_control()
-
-    step = 0
-    last_state = None
+    last_snap = None
 
     while True:
-        # ── read raw device state ──────────────────────────────────────────
         state = device.get_controller_state()
-
-        # Uncomment the next line if nothing moves — shows you the real keys:
-        # print(state)
 
         dpos  = state.get("dpos",      np.zeros(3))
         drot  = state.get("drotation", np.zeros(3))
         grasp = state.get("grasp",     0)
         reset = state.get("reset",     False)
 
-        # quit if Esc was pressed (some versions set dpos to None)
+        # Quit if Esc was pressed (some builds set dpos to None)
         if dpos is None or state.get("quit", False):
             env.close()
             raise SystemExit
@@ -83,24 +98,20 @@ while True:
             print("  Resetting …")
             break
 
-        # skip physics step when robot is idle and state hasn't changed
-        def state_changed(a, b):
-            if a is None:
-                return True
-            for k in a:
-                va, vb = a[k], b[k]
-                if isinstance(va, np.ndarray):
-                    if not np.array_equal(va, vb):
-                        return True
-                elif va != vb:
-                    return True
-            return False
-
         is_idle = np.allclose(dpos, 0) and np.allclose(drot, 0)
-        if not is_idle or state_changed(last_state, state):
-            action = np.concatenate([dpos, drot, [float(grasp)]])
+
+        if not is_idle or state_changed(last_snap, state):
+            # FIX 1: snapshot state *before* using it so held-key comparison
+            #         is always against an independent copy, not the live dict.
+            last_snap = state_snapshot(state)
+
+            # FIX 2: map grasp (0 / 1) → gripper command (-1 = open, +1 = close).
+            #         Without this the gripper stalls at 0 (half-open) and
+            #         can never generate enough force to hold the block.
+            gripper_cmd = 1.0 if grasp else -1.0
+
+            action = np.concatenate([dpos, drot, [gripper_cmd]])
             obs, reward, done, info = env.step(action)
-            last_state = state
 
             if reward > 0:
                 print(f"  ✓ block lifted!  reward={reward:.3f}")
@@ -109,6 +120,7 @@ while True:
                 print("  Episode done — resetting")
                 break
 
-        step += 1
-        if step % RENDER_EVERY == 0:
-            env.render()
+        # FIX 3: render every step so the display keeps up with physics.
+        #         Skipping frames makes inputs feel laggy even when the
+        #         underlying control loop is running at full speed.
+        env.render()
