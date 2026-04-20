@@ -52,6 +52,7 @@ def build_env(env_name: str, env_args: dict, obs_keys: list[str], render: bool):
 
     # Ensure the obs keys we care about are active
     env_args = dict(env_args)          # shallow copy — don't mutate checkpoint
+    env_args.setdefault("robots", "Panda")
     env_args.setdefault("has_renderer",          render)
     env_args.setdefault("has_offscreen_renderer", True)
     env_args.setdefault("use_camera_obs",         False)   # state-only by default
@@ -63,13 +64,32 @@ def build_env(env_name: str, env_args: dict, obs_keys: list[str], render: bool):
 
 
 def extract_obs_vector(obs_dict: dict, obs_keys: list[str]) -> np.ndarray:
-    """Flatten and concatenate the relevant obs keys from a robosuite obs dict."""
     parts = []
-    for k in obs_keys:
-        v = np.asarray(obs_dict[k], dtype=np.float32)
-        parts.append(v.ravel())
-    return np.concatenate(parts)
+    # Define a mapping for known naming mismatches
+    mapping = {
+        "egg_pos": "Can_pos",       # Map 'egg' to 'Can'
+        "egg_quat": "Can_quat",
+        "eef_pos": "robot0_eef_pos",
+        "eef_quat": "robot0_eef_quat",
+        "gripper_qpos": "robot0_gripper_qpos"
+    }
 
+    for k in obs_keys:
+        # 1. Try the original key
+        # 2. Try the mapped key
+        # 3. Try adding 'robot0_' prefix
+        actual_key = k
+        if k not in obs_dict:
+            actual_key = mapping.get(k, f"robot0_{k}")
+
+        if actual_key in obs_dict:
+            v = np.asarray(obs_dict[actual_key], dtype=np.float32)
+            parts.append(v.ravel())
+        else:
+            raise KeyError(f"Observation key '{k}' (mapped to '{actual_key}') not found. "
+                           f"Available keys: {list(obs_dict.keys())}")
+    
+    return np.concatenate(parts)
 
 # ---------------------------------------------------------------------------
 # Main
