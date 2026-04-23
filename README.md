@@ -1,29 +1,92 @@
 # PRISM
-Train imitation learning policy that contains unsafe actions /w dataset (get from Xu) 
-Get the demonstrations 
-ROBO MME ? 
-Collect dataset of unsafe actions 
-Next Week: train the IL policy 
 
-Include Paper in which you compare how many safe vs unsafe actions occur based off; if you modify the data of a policy and the safety as a result based off unsafe vs safe actions 
-RL is unfeasible currently; seeing unsafe vs safe data 
-Next Steps: 
-Establish simulator being worked with
-Record robot observes observation with stepping through the actions or tasks
-200 (n) step rollout within environment with 0 action of staying in place
-Create python project, set up simulator, step through chosen environment, control the robot through demonstrations, collect safe and unsafe  demonstrations and save demonstration in a file; 50 safe demonstrations in HDF5 and 25 unsafe demonstrations in another file
-Have the bc policy step through the environment and qualitatively measure; make ROBO Suite tasks
-ROBO Suite
+PRISM is a small robotics imitation-learning project built around Robosuite.
+The workflow is:
 
-Make repo, make environment, make video for demonstrations /w rollout 
+1. Collect demonstrations in simulation.
+2. Save trajectories in HDF5 format.
+3. Train a Behavioral Cloning (BC) policy with PyTorch.
+4. Evaluate the policy in simulation.
 
-Use robo suite data collection script to collect demonstrations; take the demonstrations and put in HDF5 file; use that to train the policy
 
-Collect observations
+## Tech Stack
 
-pip install mujoco
-pip install robosuite
+- Python 3.10
+- Robosuite + MuJoCo (robot simulation)
+- PyTorch (policy training)
+- HDF5 / h5py (dataset storage)
+- NumPy (numerical ops)
 
-Python version 3.10.20
+
+## Repository Layout
+
+- `safe_demos_collection.py`: keyboard teleoperation demo collection (Lift task)
+- `teleop.py`: manual keyboard control loop for Robosuite
+- `main.py`: scripted Lift baseline
+- `BC_Policy/`: BC dataset/model/train/eval code
+- `final_BC_policy.py`: all-in-one BC training + rollout script for PickEgg-style data
+
+
+## Setup
+
+Create and activate a Python 3.10 environment, then install dependencies.
+
+```bash
+pip install mujoco robosuite torch numpy h5py opencv-python tqdm
+```
+
+If your environment uses a custom benchmark wrapper (`oopsiebench`), install that package in the same environment.
+
+
+## Collect Demonstrations
+
+Run keyboard data collection:
+
+```bash
+python safe_demos_collection.py
+```
+
+Default output is `safe_demos.hdf5`.
+
+
+## Train a BC Policy
+
+From the policy folder:
+
+```bash
+cd BC_Policy
+python train.py --hdf5 ../safe_demos.hdf5 --out_dir checkpoints
+```
+
+Useful options:
+
+```bash
+python train.py --help
+```
+
+
+## Evaluate a Trained Policy
+
+From `BC_Policy`:
+
+```bash
+python evaluate_policy.py --policy checkpoints/best_policy.pt --num_episodes 100
+```
+
+
+## Quick Alternative Pipeline
+
+`final_BC_policy.py` includes a full train + evaluate flow in one script.
+Before running it, update `DATASET_PATH` to your local dataset path.
+
+```bash
+python final_BC_policy.py
+```
+
+
+## Notes
+
+- Dataset schema matters: training code expects Robosuite-style HDF5 groups under `data/demo_x/...`.
+- Several scripts target different tasks/environments (Lift vs PickEgg). Keep dataset and evaluation environment aligned.
 
 
